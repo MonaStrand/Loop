@@ -13,18 +13,16 @@ class BuildDetails {
     static var `default` = BuildDetails()
 
     let dict: [String: Any]
-    private var cachedProfileExpirationDate: Date?
 
     init() {
         guard let url = Bundle.main.url(forResource: "BuildDetails", withExtension: ".plist"),
-           let data = try? Data(contentsOf: url),
-           let parsed = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else
+              let data = try? Data(contentsOf: url),
+              let parsed = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else
         {
             dict = [:]
             return
         }
         dict = parsed
-        cachedProfileExpirationDate = loadProfileExpirationDate()
     }
 
     var buildDateString: String? {
@@ -48,11 +46,11 @@ class BuildDetails {
     }
 
     var profileExpiration: Date? {
-        return cachedProfileExpirationDate
+        return dict["com-loopkit-Loop-profile-expiration"] as? Date
     }
 
     var profileExpirationString: String {
-        if let profileExpiration = cachedProfileExpirationDate {
+        if let profileExpiration = profileExpiration {
             return "\(profileExpiration)"
         } else {
             return "N/A"
@@ -65,41 +63,22 @@ class BuildDetails {
     }
 
     var workspaceGitBranch: String? {
-       return dict["com-loopkit-LoopWorkspace-git-branch"] as? String
-   }
+        return dict["com-loopkit-LoopWorkspace-git-branch"] as? String
+    }
 
-    private func loadProfileExpirationDate() -> Date? {
-        guard
-            let profilePath = Bundle.main.path(forResource: "embedded", ofType: "mobileprovision"),
-            let profileData = try? Data(contentsOf: URL(fileURLWithPath: profilePath)),
-            let profileNSString = NSString(data: profileData, encoding: String.Encoding.ascii.rawValue)
-        else {
-            print(
-                "WARNING: Could not find or read `embedded.mobileprovision`. If running on Simulator, there are no provisioning profiles."
-            )
-            return nil
+    /// Returns a dictionary of submodule details.
+    /// The keys are the submodule names, and the values are tuples (branch, commitSHA).
+    var submodules: [String: (branch: String, commitSHA: String)] {
+        guard let subs = dict["com-loopkit-Loop-submodules"] as? [String: [String: Any]] else {
+            return [:]
         }
-
-        let regexPattern = "<key>ExpirationDate</key>[\\W]*?<date>(.*?)</date>"
-        guard let regex = try? NSRegularExpression(pattern: regexPattern, options: []),
-              let match = regex.firstMatch(
-                in: profileNSString as String,
-                options: [],
-                range: NSRange(location: 0, length: profileNSString.length)
-              ),
-              let range = Range(match.range(at: 1), in: profileNSString as String)
-        else {
-            print("Warning: Could not create regex or find match.")
-            return nil
+        var result = [String: (branch: String, commitSHA: String)]()
+        for (name, info) in subs {
+            let branch = info["branch"] as? String ?? String(localized: "Unknown")
+            let commitSHA = info["commit_sha"] as? String ?? String(localized: "Unknown")
+            result[name] = (branch: branch, commitSHA: commitSHA)
         }
-
-        let dateString = String(profileNSString.substring(with: NSRange(range, in: profileNSString as String)))
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
-        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
-        dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
-
-        return dateFormatter.date(from: dateString)
+        return result
     }
 }
 
